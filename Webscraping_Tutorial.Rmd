@@ -1,0 +1,146 @@
+---
+title: "Webscraping"
+author: "Peter Aspholm"
+date: "2023-12-21"
+output: html_document
+---
+
+###None of the ideas in this code presented are originally mine. The scraping function was modified from code designed by Robert Frey (https://github.com/robert-frey) accessed December 2023. 
+
+## Webscraping demo code
+This will need to be adapted to your purposes. I will try to walk you through the step by step instructions for this code, and I have a demo dataset that I am using. 
+
+The purpose of webscraping is to automate the act of pulling and downloading data from a site. You can create a list of URLs, often similar, which means you can use a string and replace certain portions of the urls with customizable strings from a list, like years (this example) or perhaps sites, data type etc. The point being you can access the html page of each site easily and recursively. 
+
+In order for this to work, you need a page that has a table on it already. Like this: 
+
+![Baseball reference data]("/Users/peteraspholm/Desktop/stat tinkering/Screen Shot 2023-12-21 at 12.07.14 PM.png")
+
+or like this: 
+
+![NOAA Weather Data]("/Users/peteraspholm/Desktop/stat tinkering/Screen Shot 2023-12-21 at 12.11.24 PM.png")
+
+Before you start, figure out what the URL format is. If you want to get daily weather data but the search feature will only show you a month at a time, what differentiates the URLs of each month you might want to pull. This will make it easy to make a list.
+
+## Load in Pacakges
+```{r}
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+library(rvest)
+library(xml2)
+```
+
+
+## Webscraping 
+
+I will use rvest and xml2 mainly to extract data from baseball reference 
+
+Line 45 is what I was referrig to above, it is easy to make a bunch of URLs if you are smart about how to access them.
+```{r}
+years <- c(1980:2019) #40 years of data
+urls <- list()
+#list of urls
+for (i in 1:length(years)){
+  url = paste0("https://www.baseball-reference.com/leagues/majors/",years[i],"-standings.shtml")
+  urls[[i]] = url
+}
+```
+
+This is just housekeeping stuff for my specific example. It might be necessary for you, it might not. 
+```{r}
+#Pipe into a new data frame and assign years
+urls <- urls%>%
+  unlist()%>%
+  as.data.frame()%>%
+  mutate(year = years)%>%
+  rename(url = ".")
+```
+
+
+Here is the function - generally, you could use just inputs url and year, but in the case of the website I am accessing, there are multpile tables on the page, so if you are not accessing the first table, you need to skip to the else statement. Table_num is sort of a dummy variable. This is also probably not the best way to do this, but it works. 
+
+The html_elements command is confusing and has to do with the JavaScript code that comprises an HTML page. The way you find them is by right clicking on the table and then clicking inspect. This will bring up the JavaScript code that makes the website. You have to sort of sort through it and find what code relates to what. I think (could be wrong, I haven't tested this function much) that the if statement should work for pretty much any page that has only 1 table, so majority of the time you should put 1 as table_num. And in that case you don't even need to find the xpath or css selector. If you need to get at a different table than the first, its sort of hard. 
+
+![Copy xpath of comment]("/Users/peteraspholm/Desktop/stat tinkering/Screen Shot 2023-12-21 at 12.33.05 PM.png")
+
+![Copy selector]("/Users/peteraspholm/Desktop/stat tinkering/Screen Shot 2023-12-21 at 12.34.20 PM.png")
+
+```{r Function}
+scrape_bref_data <- function(url, year, table_num){
+  if(table_num == 1){
+    df <- url%>% 
+      read_html()%>% 
+      html_element("table")%>% #get table by selecting html tag 
+      html_table(trim = T)%>% 
+      .[[1]]%>%
+      mutate(Year = year) #this part of the loop is because there are multpile tables on baseball reference pages which makes the html                           parsing more difficult
+  }
+  else{
+    df <- url%>%read_html()%>%
+      html_elements(xpath = '//comment()')%>%
+      html_text()%>%
+      paste(collapse='')%>%
+      read_html()%>%
+      html_element('#expanded_standings_overall')%>%
+      html_table(trim = T)%>%
+      mutate(Year = year)
+  }
+    df #return dataframe of that years standings
+}
+
+```
+
+Baseball reference does not like it when you give them lots of requests in a short amount of time, so to accomodate that, I introduce a pause before iterating over the next year. 
+
+Probably a lot of other websites have the same feelings about being inundated with HTML requests, so I'd recommend keeping the pause. There is also a way to use vector mapping to recursively 
+
+*Commenting out the below chunk so that it doesn't run on knit
+```{r Running the function and combining datasets}
+# 
+# records80_93 <- data.frame() #initialize
+# records94_19 <- data.frame()
+# 
+# for(i in c(1:14)){                                                         # Start for-loop
+#  
+#   start_time <- Sys.time()                                                 # Save starting time
+#  
+#   records80_93 <- rbind(records80_93, scrape_bref_data(urls$url[i], urls$year[i], 2))    #recursively call the function and bind to the                                                                                           compiled df 
+#   records80_93 <- records80_93[-c(nrow(records80_93)),] #delete the last row (averages)
+#  
+#   Sys.sleep(5)                                                             # Wait 5 seconds
+#  
+#   end_time <- Sys.time()                                                   # Save finishing time
+#   time_needed <- end_time - start_time                                     # Calculate time difference
+#  
+#   print(paste("Step", i, "was finished after", time_needed, "seconds."))   # Print time difference
+# }
+# 
+# # Interleague play began in 94 and it changes the size of the df which is what I have to do two loops
+# 
+# for(i in c(15:40)){                                                         # Start for-loop
+#  
+#   start_time <- Sys.time()                                                 # Save starting time
+#  
+#   records94_19 <- rbind(records94_19, scrape_bref_data(urls$url[i], urls$year[i], 7))
+#   records94_19 <- records94_19[-c(nrow(records94_19)),]
+#  
+#   Sys.sleep(5)                                                             # Wait 5 seconds
+#  
+#   end_time <- Sys.time()                                                   # Save finishing time
+#   time_needed <- end_time - start_time                                     # Calculate time difference
+#  
+#   print(paste("Step", i, "was finished after", time_needed, "seconds."))   # Print time difference
+# }
+# 
+# records94_19_clean <-subset(records94_19, select = -c(vCent, Inter)) #combining dfs of different sizes
+# records <- rbind(records94_19_clean, records80_93) # output is 40 years of standings data 
+```
+
+## Conclusions 
+
+This probably will not work for you on your first try, and may take a few hours to get running depending on your proficiency in R. If you are looking to download and compile 5 years of data, just do it manually, but if you are looking for 50 years, this might be worth your time to use. 
+
+
