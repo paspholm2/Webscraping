@@ -1,0 +1,249 @@
+---
+title: "Analysis of different systems of assigning team records"
+author: "Peter Aspholm"
+date: "2023-10-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1: Scraping Data from Baseball Reference (This code can be used in many different applications)
+
+None of the ideas in this code presented are originally mine. The scraping function was modified from code designed by Robert Frey (https://github.com/robert-frey) accessed December 2023. 
+
+I hate the zombie runner in extra innings because I believe that it introduces randomness to baseball that can negatively affect good teams chances of making the playoffs through no fault of their own. The goal of this project is to prove that a system of points per win/loss/extra innings win/loss will correlate more highly with the true talent of a team as predicted by pythagorean w/l record. 
+
+## Load in Pacakges
+```{r}
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(stringr)
+library(rvest)
+library(xml2)
+```
+
+
+## Webscraping 
+
+I will use rvest and xml2 mainly to extract data from baseball reference 
+```{r}
+years <- c(1980:2019) #40 years of data
+urls <- list()
+#list of urls
+for (i in 1:length(years)){
+  url = paste0("https://www.baseball-reference.com/leagues/majors/",years[i],"-standings.shtml")
+  urls[[i]] = url
+}
+```
+
+
+```{r}
+#Pipe into a new data frame and assign years
+urls <- urls%>%
+  unlist()%>%
+  as.data.frame()%>%
+  mutate(year = years)%>%
+  rename(url = ".")
+```
+
+```{r}
+scrape_bref_data <- function(url, year, table_num){
+  if(table_num == 1){
+    df <- url%>% 
+      read_html()%>% 
+      html_element("table")%>% #get table by selecting html tag 
+      html_table(trim = T)%>% 
+      .[[1]]%>%
+      mutate(Year = year) #this part of the loop is because there are multpile tables on baseball reference pages which makes the html                           parsing more difficult
+  }
+  else{
+    df <- url%>%read_html()%>%
+      html_elements(xpath = '//comment()')%>%
+      html_text()%>%
+      paste(collapse='')%>%
+      read_html()%>%
+      html_element('#expanded_standings_overall')%>%
+      html_table(trim = T)%>%
+      mutate(Year = year)
+  }
+    df #return dataframe of that years standings
+}
+
+```
+
+Baseball reference does not like it when you give them lots of requests in a short amount of time, so to accomodate that, I introduce a pause before iterating over the next year. 
+
+```{r}
+records80_93 <- data.frame() #initialize
+records94_19 <- data.frame()
+
+for(i in c(1:14)){                                                         # Start for-loop
+ 
+  start_time <- Sys.time()                                                 # Save starting time
+ 
+  records80_93 <- rbind(records80_93, scrape_bref_data(urls$url[i], urls$year[i], 7))    
+  records80_93 <- records80_93[-c(nrow(records80_93)),]
+ 
+  Sys.sleep(5)                                                             # Wait 5 seconds
+ 
+  end_time <- Sys.time()                                                   # Save finishing time
+  time_needed <- end_time - start_time                                     # Calculate time difference
+ 
+  print(paste("Step", i, "was finished after", time_needed, "seconds."))   # Print time difference
+}
+
+
+# Interleague play began in 94 and it changes the size of the df
+
+
+for(i in c(15:40)){                                                         # Start for-loop
+ 
+  start_time <- Sys.time()                                                 # Save starting time
+ 
+  records94_19 <- rbind(records94_19, scrape_bref_data(urls$url[i], urls$year[i], 7))
+  records94_19 <- records94_19[-c(nrow(records94_19)),]
+ 
+  Sys.sleep(5)                                                             # Wait 5 seconds
+ 
+  end_time <- Sys.time()                                                   # Save finishing time
+  time_needed <- end_time - start_time                                     # Calculate time difference
+ 
+  print(paste("Step", i, "was finished after", time_needed, "seconds."))   # Print time difference
+}
+
+records94_19_clean <-subset(records94_19, select = -c(vCent, Inter)) #combining dfs of different sizes
+records <- rbind(records94_19_clean, records80_93) # output is 40 years of standings data 
+```
+
+
+
+
+
+
+```{r}
+record <-read.csv("/Users/peteraspholm/Desktop/stat tinkering/season_stats.csv")
+record <- record[-c(1, 32),]
+```
+
+```{r}
+head(record)
+record[c('xinnw', 'xinnl')] <- str_split_fixed(record$ExInn, '-', 2)
+record[c('pythagW', 'pythagL')] <- str_split_fixed(record$pythWL, '-', 2)
+
+```
+
+```{r}
+record$xinnl<-as.integer(record$xinnl)
+record$xinnw<-as.integer(record$xinnw)
+
+record$noxl <- (record$L - record$xinnl)
+record$noxw <- (record$W - record$xinnw)
+
+
+record <- record %>%
+  mutate(ptsW2 = (W*2 + xinnl*1))%>%
+  mutate(ptsW3 = (W*3 + xinnl*1))%>%
+  mutate(ptsW3_W2xinn = (noxw *3 + xinnw*2 + xinnl))%>%
+  mutate(Xinn_perc = xinnw/(xinnl + xinnw))%>%
+  mutate(pts = W*2)
+
+record
+```
+
+
+```{r}
+record%>%
+  summarize(mean(Xinn_perc))
+record<-record%>%
+  mutate(xinntot = (xinnw+xinnl))%>%
+  mutate(avgxinn_tot = mean(xinntot))
+
+record$avgxinnw <- record$xinntot * record$Xinn_perc
+record$avgxinnl <- 13.4 - record$avgxinnw
+
+record$pythagW<-as.integer(record$pythagW)
+
+record <- record%>%
+  mutate(xpts = pythagW * 2 + avgxinnl)
+```
+
+
+```{r}
+ggplot(data = record, aes(x = ptsW2))+
+  geom_histogram(binwidth = 15)
+       
+       
+histogram(record$ptsW3)
+histogram(record$ptsW3_W2xinn)
+
+
+
+mod1 <- lm(xpts ~ ptsW2, data = record)
+mod2 <- lm(xpts ~ pts, data = record)
+mod3 <- lm(xpts ~ ptsW3, data = record)
+mod4 <- lm(xpts ~ ptsW3_W2xinn, data = record)
+
+summary(mod1)
+summary(mod2)
+summary(mod3)
+summary(mod4)
+
+
+
+```
+
+```{r}
+ggplot(mod1, aes(x = .fitted, y = .resid))+
+  geom_point()+
+  geom_hline(yintercept = 0)+
+  ylim(-20, 30)+
+  labs(title = "Pythagoreans Points ~ Points from W * 2 + XinnL")
+
+ggplot(mod2, aes(x = .fitted, y = .resid))+
+  geom_point()+
+  geom_hline(yintercept = 0)+
+  ylim(-20, 30)+
+  labs(title = "Pythagoreans Points ~ Points W*2 normalized simple win record")
+
+ggplot(mod3, aes(x = .fitted, y = .resid))+
+  geom_point()+
+  geom_hline(yintercept = 0)+
+  ylim(-20, 30)+
+  labs(title = "Pythagoreans Points ~ Points from W * 3 + XinnL")
+
+ggplot(mod4, aes(x = .fitted, y = .resid))+
+  geom_point()+
+  geom_hline(yintercept = 0)+
+  ylim(-20, 30)+
+  labs(title = "Pythagoreans Points ~ Points W*3 + XinnW*2 +XinnL")
+
+
+```
+
+
+```{r}
+write.csv(record, "/Users/peteraspholm/Desktop/stat tinkering/record_with_pts_v2.csv", row.names = FALSE)
+```
+
+
+
+
+
+
+
+```{r}
+require(plyr)
+dataframe$Treatment <- mapvalues(dataframe$Treatment, 
+          from=c("3","4" ), #etc
+          to=c("MNSS2","SS Potter" )) #etc.
+```
+
+
+
+
+
+
