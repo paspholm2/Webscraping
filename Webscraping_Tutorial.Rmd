@@ -14,11 +14,11 @@ The purpose of webscraping is to automate the act of pulling and downloading dat
 
 In order for this to work, you need a page that has a table on it already. Like this: 
 
-![Baseball reference data]("/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/bref.png")
+![Baseball reference data](/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/bref.png)
 
 or like this: 
 
-![NOAA Weather Data]("/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/weather.png")
+![NOAA Weather Data](/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/weather.png)
 
 Before you start, figure out what the URL format is. If you want to get daily weather data but the search feature will only show you a month at a time, what differentiates the URLs of each month you might want to pull. This will make it easy to make a list.
 
@@ -64,9 +64,9 @@ Here is the function - generally, you could use just inputs url and year, but in
 
 The html_elements command is confusing and has to do with the JavaScript code that comprises an HTML page. The way you find them is by right clicking on the table and then clicking inspect. This will bring up the JavaScript code that makes the website. You have to sort of sort through it and find what code relates to what. I think (could be wrong, I haven't tested this function much) that the if statement should work for pretty much any page that has only 1 table, so majority of the time you should put 1 as table_num. And in that case you don't even need to find the xpath or css selector. If you need to get at a different table than the first, its sort of hard. 
 
-![Copy xpath of comment]("/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/xpath.png")
+![Copy xpath of comment](/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/xpath.png)
 
-![Copy selector]("/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/selector.png")
+![Copy selector](/Users/peteraspholm/Desktop/stat tinkering/Webscraping_demo_code/selector.png)
 
 ```{r Function}
 scrape_bref_data <- function(url, year, table_num){
